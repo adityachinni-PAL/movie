@@ -218,9 +218,10 @@ export default function App() {
       Please provide 3 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films in this genre.
       CRITICAL: Focus ONLY on single, full-length short films. Exclude full-length feature movies, clips, teasers, trailers, promotional snippets, "Top 10" lists, "Best of" compilations, and "Table of Contents" style videos.
       If an actor or director is specified, prioritize them in the queries.
-      Also provide 2 search queries for trending entertainment short films in English or Hindi.
+      Also provide 2 search queries for trending entertainment short films in English ONLY.
+      STRICT POLICY: Ensure all recommendations are family-friendly. ABSOLUTELY NO adult content, NSFW material, or sexually explicit content, even for the "Romance" genre.
       Return the result as a JSON array of objects, where each object has "query" (string) and "reason" (a short, 1-sentence explanation of why this is recommended based on user mood/preferences). 
-      First 3 objects are ${selectedLanguage}, last 2 are English/Hindi.`;
+      First 3 objects are ${selectedLanguage}, last 2 are English.`;
       
       console.log("Calling Gemini API...");
       const response = await ai.models.generateContent({
@@ -273,7 +274,7 @@ export default function App() {
       // Fetch Trending videos (Top 2)
       for (let i = 3; i < 5; i++) {
         const item = recommendationData[i];
-        const query = (item?.query || `trending entertainment English Hindi short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        const query = (item?.query || `trending entertainment English short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
         console.log(`Fetching YouTube trending results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
@@ -364,10 +365,19 @@ export default function App() {
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-5xl md:text-7xl font-serif font-light tracking-tight mb-6"
+            className="text-5xl md:text-7xl font-serif font-light tracking-tight mb-4"
           >
             What's the <span className="italic text-orange-500">mood</span> tonight?
           </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="text-white/60 text-lg mb-8 max-w-2xl"
+          >
+            Select your preferred language and click on a genre icon to get started.
+          </motion.p>
           
           {/* Advanced Filters */}
           <motion.div 
