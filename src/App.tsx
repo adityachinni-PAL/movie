@@ -171,8 +171,17 @@ export default function App() {
   const fetchSuggestions = async (genre: string) => {
     setLoading(true);
     setError(null);
+    console.log("Starting fetchSuggestions for genre:", genre);
+    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = process.env.GEMINI_API_KEY;
+      console.log("Gemini API Key status:", apiKey ? "Present (length: " + apiKey.length + ")" : "Missing");
+      
+      if (!apiKey || apiKey.trim() === "") {
+        throw new Error("GEMINI_API_KEY is missing. Please add it to your Vercel Environment Variables and REDEPLOY.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       
       // Personalization context
       const historyContext = watchHistory.length > 0 
@@ -197,6 +206,7 @@ export default function App() {
       Return the result as a JSON array of objects, where each object has "query" (string) and "reason" (a short, 1-sentence explanation of why this is recommended based on user mood/preferences). 
       First 3 objects are ${selectedLanguage}, last 2 are English/Hindi.`;
       
+      console.log("Calling Gemini API...");
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -205,6 +215,7 @@ export default function App() {
         }
       });
 
+      console.log("Gemini API Response received");
       const recommendationData = JSON.parse(response.text || "[]");
       const allSuggestions: Suggestion[] = [];
 
@@ -212,7 +223,13 @@ export default function App() {
       for (let i = 0; i < 3; i++) {
         const item = recommendationData[i];
         const query = (item?.query || `${genre} ${selectedLanguage} short film popular`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        console.log(`Fetching YouTube results for query ${i+1}:`, query);
+        
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(`YouTube Search Error (Query ${i+1}): ${errorData.error || res.statusText}`);
+        }
         const data = await res.json();
         if (data.items && data.items.length > 0) {
           const video: YouTubeVideo = data.items[0];
@@ -234,7 +251,13 @@ export default function App() {
       for (let i = 3; i < 5; i++) {
         const item = recommendationData[i];
         const query = (item?.query || `trending entertainment English Hindi short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        console.log(`Fetching YouTube trending results for query ${i+1}:`, query);
+        
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(`YouTube Trending Error (Query ${i+1}): ${errorData.error || res.statusText}`);
+        }
         const data = await res.json();
         if (data.items && data.items.length > 0) {
           const video: YouTubeVideo = data.items[0];
@@ -253,9 +276,9 @@ export default function App() {
       }
 
       setSuggestions(allSuggestions);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch recommendations. Please check your API keys.");
+    } catch (err: any) {
+      console.error("Detailed Recommendation Error:", err);
+      setError(`Error: ${err.message || "An unknown error occurred while fetching recommendations."}`);
     } finally {
       setLoading(false);
     }
