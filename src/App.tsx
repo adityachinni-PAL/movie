@@ -91,6 +91,22 @@ export default function App() {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
+
+    // Backend health check
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/api/health');
+        if (!res.ok) {
+          console.error("Backend health check failed:", res.status, res.statusText);
+        } else {
+          const data = await res.json();
+          console.log("Backend health check success:", data);
+        }
+      } catch (err) {
+        console.error("Backend health check error:", err);
+      }
+    };
+    checkHealth();
   }, []);
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -226,7 +242,14 @@ export default function App() {
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
-        const data = await res.json().catch(() => ({ error: res.statusText || "Failed to parse JSON" }));
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error("Failed to parse YouTube response as JSON. Raw text:", text);
+          throw new Error(`YouTube Search Error (Query ${i+1}): Server returned invalid JSON. Check console for details.`);
+        }
         
         if (!res.ok) {
           throw new Error(`YouTube Search Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
@@ -254,7 +277,14 @@ export default function App() {
         console.log(`Fetching YouTube trending results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
-        const data = await res.json().catch(() => ({ error: res.statusText || "Failed to parse JSON" }));
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error("Failed to parse YouTube trending response as JSON. Raw text:", text);
+          throw new Error(`YouTube Trending Error (Query ${i+1}): Server returned invalid JSON. Check console for details.`);
+        }
         
         if (!res.ok) {
           throw new Error(`YouTube Trending Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
