@@ -226,11 +226,11 @@ export default function App() {
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
+        const data = await res.json().catch(() => ({ error: res.statusText || "Failed to parse JSON" }));
+        
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(`YouTube Search Error (Query ${i+1}): ${errorData.error || res.statusText}`);
+          throw new Error(`YouTube Search Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
         }
-        const data = await res.json();
         if (data.items && data.items.length > 0) {
           const video: YouTubeVideo = data.items[0];
           allSuggestions.push({
@@ -254,11 +254,11 @@ export default function App() {
         console.log(`Fetching YouTube trending results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
+        const data = await res.json().catch(() => ({ error: res.statusText || "Failed to parse JSON" }));
+        
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(`YouTube Trending Error (Query ${i+1}): ${errorData.error || res.statusText}`);
+          throw new Error(`YouTube Trending Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
         }
-        const data = await res.json();
         if (data.items && data.items.length > 0) {
           const video: YouTubeVideo = data.items[0];
           allSuggestions.push({

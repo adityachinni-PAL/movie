@@ -134,25 +134,37 @@ async function startServer() {
     const { q, maxResults = 5, order = "relevance", publishedAfter } = req.query;
     const apiKey = process.env.YOUTUBE_API_KEY;
 
-    if (!apiKey) {
-      return res.status(500).json({ error: "YOUTUBE_API_KEY is not configured" });
+    if (!apiKey || apiKey.trim() === "") {
+      return res.status(500).json({ error: "YOUTUBE_API_KEY is missing or empty in environment variables" });
     }
 
     try {
+      const cleanApiKey = apiKey.trim();
       let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(
         q as string
-      )}&type=video&maxResults=${maxResults}&order=${order}&key=${apiKey}`;
+      )}&type=video&maxResults=${maxResults}&order=${order}&key=${cleanApiKey}`;
       
       if (publishedAfter) {
         url += `&publishedAfter=${publishedAfter}`;
       }
 
+      console.log("Fetching from YouTube API...");
       const response = await fetch(url);
       const data = await response.json();
+      
+      if (!response.ok) {
+        console.error("YouTube API Error Response:", data);
+        const errorMessage = data.error?.message || response.statusText || "Unknown YouTube API error";
+        return res.status(response.status).json({ 
+          error: errorMessage,
+          details: data.error
+        });
+      }
+      
       res.json(data);
-    } catch (error) {
-      console.error("YouTube Search Error:", error);
-      res.status(500).json({ error: "Failed to fetch from YouTube" });
+    } catch (error: any) {
+      console.error("YouTube Search Exception:", error);
+      res.status(500).json({ error: `Internal Server Error: ${error.message || "Failed to fetch from YouTube"}` });
     }
   });
 
@@ -161,19 +173,31 @@ async function startServer() {
     const { regionCode = "IN", maxResults = 2 } = req.query;
     const apiKey = process.env.YOUTUBE_API_KEY;
 
-    if (!apiKey) {
-      return res.status(500).json({ error: "YOUTUBE_API_KEY is not configured" });
+    if (!apiKey || apiKey.trim() === "") {
+      return res.status(500).json({ error: "YOUTUBE_API_KEY is missing or empty in environment variables" });
     }
 
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&chart=mostPopular&regionCode=${regionCode}&maxResults=${maxResults}&videoCategoryId=24&key=${apiKey}`
-      );
+      const cleanApiKey = apiKey.trim();
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&chart=mostPopular&regionCode=${regionCode}&maxResults=${maxResults}&videoCategoryId=24&key=${cleanApiKey}`;
+      
+      console.log("Fetching trending from YouTube API...");
+      const response = await fetch(url);
       const data = await response.json();
+      
+      if (!response.ok) {
+        console.error("YouTube Trending API Error Response:", data);
+        const errorMessage = data.error?.message || response.statusText || "Unknown YouTube Trending API error";
+        return res.status(response.status).json({ 
+          error: errorMessage,
+          details: data.error
+        });
+      }
+      
       res.json(data);
-    } catch (error) {
-      console.error("YouTube Trending Error:", error);
-      res.status(500).json({ error: "Failed to fetch trending from YouTube" });
+    } catch (error: any) {
+      console.error("YouTube Trending Exception:", error);
+      res.status(500).json({ error: `Internal Server Error: ${error.message || "Failed to fetch trending from YouTube"}` });
     }
   });
 
