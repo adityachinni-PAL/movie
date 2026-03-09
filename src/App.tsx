@@ -79,6 +79,8 @@ export default function App() {
   const [selectedLanguage, setSelectedLanguage] = useState('Telugu');
   const [actorFilter, setActorFilter] = useState('');
   const [directorFilter, setDirectorFilter] = useState('');
+  const [moodInput, setMoodInput] = useState('');
+  const [durationFilter, setDurationFilter] = useState('any');
 
   // Review State
   const [activeVideoForReview, setActiveVideoForReview] = useState<Suggestion | null>(null);
@@ -184,10 +186,10 @@ export default function App() {
     setVideoReviews(data.reviews);
   };
 
-  const fetchSuggestions = async (genre: string) => {
+  const fetchSuggestions = async (genre: string | null) => {
     setLoading(true);
     setError(null);
-    console.log("Starting fetchSuggestions for genre:", genre);
+    console.log("Starting fetchSuggestions for genre:", genre, "mood:", moodInput);
     
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -211,11 +213,13 @@ export default function App() {
         Language: ${selectedLanguage}
         Actor Filter: ${actorFilter || 'None'}
         Director Filter: ${directorFilter || 'None'}
+        Duration Preference: ${durationFilter === 'any' ? 'Any' : durationFilter}
+        User Mood/Request: ${moodInput || 'None'}
       `;
 
-      const prompt = `I am building a movie recommendation app. The user selected the genre "${genre}". 
+      const prompt = `I am building a movie recommendation app. ${genre ? `The user selected the genre "${genre}".` : ''} 
       ${prefContext} ${historyContext} ${filterContext}
-      Please provide 3 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films in this genre.
+      Please provide 3 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood and preferences.
       CRITICAL: Focus ONLY on single, full-length short films. Exclude full-length feature movies, clips, teasers, trailers, promotional snippets, "Top 10" lists, "Best of" compilations, and "Table of Contents" style videos.
       If an actor or director is specified, prioritize them in the queries.
       Also provide 2 search queries for trending entertainment short films in English ONLY.
@@ -239,7 +243,7 @@ export default function App() {
       // Fetch Language-specific videos (Top 3)
       for (let i = 0; i < 3; i++) {
         const item = recommendationData[i];
-        const query = (item?.query || `${genre} ${selectedLanguage} short film popular`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        const query = (item?.query || `${genre || 'popular'} ${selectedLanguage} short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
@@ -264,7 +268,7 @@ export default function App() {
             channel: video.snippet.channelTitle,
             type: 'cinema',
             label: `${selectedLanguage} Pick`,
-            reason: item?.reason || `Highly rated ${genre} content in ${selectedLanguage}.`,
+            reason: item?.reason || `Highly rated content in ${selectedLanguage}.`,
             link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
             publishedAt: video.snippet.publishedAt
           });
@@ -384,58 +388,128 @@ export default function App() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="flex flex-wrap items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10"
+            className="flex flex-wrap items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 mb-8"
           >
             <div className="flex items-center gap-2 text-white/40 text-sm">
               <Filter className="w-4 h-4" />
               <span>Filters:</span>
             </div>
             
-            <div className="flex items-center gap-2">
-              <Languages className="w-4 h-4 text-white/40" />
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">Language</span>
+              <div className="flex items-center gap-2">
+                <Languages className="w-4 h-4 text-white/40" />
+                <select 
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50"
+                >
+                  {LANGUAGE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">Duration</span>
               <select 
-                value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
+                value={durationFilter}
+                onChange={(e) => setDurationFilter(e.target.value)}
                 className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50"
               >
-                {LANGUAGE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
+                <option value="any">Any Duration</option>
+                <option value="under 10 mins">Under 10 mins</option>
+                <option value="10-20 mins">10-20 mins</option>
+                <option value="over 20 mins">Over 20 mins</option>
               </select>
             </div>
 
-            <input 
-              type="text" 
-              placeholder="Actor (e.g. Prabhas)" 
-              value={actorFilter}
-              onChange={(e) => setActorFilter(e.target.value)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50 w-40"
-            />
-            <input 
-              type="text" 
-              placeholder="Director" 
-              value={directorFilter}
-              onChange={(e) => setDirectorFilter(e.target.value)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50 w-40"
-            />
-            <div className="flex items-center gap-2 ml-auto">
-              <ArrowUpDown className="w-4 h-4 text-white/40" />
-              <select 
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50"
-              >
-                {SORT_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">Actor</span>
+              <input 
+                type="text" 
+                placeholder="e.g. Prabhas" 
+                value={actorFilter}
+                onChange={(e) => setActorFilter(e.target.value)}
+                className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50 w-32"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">Director</span>
+              <input 
+                type="text" 
+                placeholder="e.g. Rajamouli" 
+                value={directorFilter}
+                onChange={(e) => setDirectorFilter(e.target.value)}
+                className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50 w-32"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 ml-auto">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">Sort By</span>
+              <div className="flex items-center gap-2">
+                <ArrowUpDown className="w-4 h-4 text-white/40" />
+                <select 
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500/50"
+                >
+                  {SORT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Genie Feature */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="relative mb-12"
+          >
+            <div className="absolute -top-3 left-6 px-2 bg-black text-orange-500 text-[10px] font-bold uppercase tracking-[0.2em] z-20">
+              The Movie Genie
+            </div>
+            <div className="p-6 rounded-3xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
+              <p className="text-white/60 text-sm mb-4">
+                Describe your mood or a specific story you're looking for. The Genie will find it.
+              </p>
+              <div className="flex gap-4">
+                <div className="relative flex-1">
+                  <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500" />
+                  <input
+                    type="text"
+                    placeholder="e.g. A heartwarming story about a dog in a small village..."
+                    value={moodInput}
+                    onChange={(e) => setMoodInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchSuggestions(null)}
+                    className="w-full bg-black/50 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-lg focus:outline-none focus:border-orange-500/50 transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchSuggestions(null)}
+                  disabled={loading || !moodInput.trim()}
+                  className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  Ask Genie
+                </button>
+              </div>
             </div>
           </motion.div>
         </header>
 
         {/* Genre Grid */}
         <section className="mb-16">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-serif italic text-white/60">Or pick a quick genre</h2>
+            <span className="text-[10px] text-white/30 uppercase tracking-widest">Select one to refresh</span>
+          </div>
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
             {GENRES.map((genre, idx) => (
               <motion.button
                 key={genre}
@@ -444,19 +518,13 @@ export default function App() {
                 transition={{ delay: 0.1 + idx * 0.05 }}
                 onClick={() => handleGenreSelect(genre)}
                 className={cn(
-                  "group relative p-6 rounded-2xl border transition-all duration-300 text-left overflow-hidden",
+                  "group relative p-3 rounded-xl border transition-all duration-300 text-center overflow-hidden",
                   selectedGenre === genre 
                     ? "bg-orange-500 border-orange-400 text-black" 
                     : "bg-white/5 border-white/10 hover:border-orange-500/50 hover:bg-white/10"
                 )}
               >
-                <span className="relative z-10 text-lg font-medium">{genre}</span>
-                <div className={cn(
-                  "absolute bottom-[-20%] right-[-10%] opacity-10 transition-transform duration-500 group-hover:scale-125 group-hover:rotate-12",
-                  selectedGenre === genre ? "text-black" : "text-white"
-                )}>
-                  <Film className="w-24 h-24" />
-                </div>
+                <span className="relative z-10 text-xs font-medium truncate block">{genre}</span>
               </motion.button>
             ))}
           </div>
@@ -782,72 +850,71 @@ function VideoCard({ video, index, onWatch, onReview }: { video: Suggestion, ind
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="group relative flex flex-col h-full"
+      className="group relative flex flex-col h-full bg-white/5 rounded-3xl overflow-hidden border border-white/10 hover:border-orange-500/50 transition-all duration-500"
     >
-      <a
-        href={video.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={onWatch}
-        className="block"
-      >
-        <div className="relative aspect-video rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-orange-500/50 transition-colors">
-          <img 
-            src={video.thumbnail} 
-            alt={video.title}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-orange-500 flex items-center justify-center transform scale-75 group-hover:scale-100 transition-transform duration-300">
-              <Play className="w-8 h-8 text-black fill-current" />
-            </div>
-          </div>
+      <div className="relative aspect-video overflow-hidden">
+        <img 
+          src={video.thumbnail} 
+          alt={video.title}
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        
+        <div className="absolute top-4 left-4 flex gap-2">
           {video.label && (
-            <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-orange-500 text-black text-[10px] font-bold uppercase tracking-wider">
+            <span className="px-3 py-1 rounded-full bg-orange-500 text-black text-[10px] font-bold uppercase tracking-wider">
               {video.label}
-            </div>
+            </span>
           )}
-          {stats && stats.reviewCount > 0 && (
-            <div className="absolute bottom-4 right-4 px-2 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 flex items-center gap-1.5">
-              <Star className="w-3 h-3 text-orange-500 fill-current" />
-              <span className="text-xs font-bold">{stats.averageRating.toFixed(1)}</span>
-              <span className="text-[10px] text-white/40">({stats.reviewCount})</span>
-            </div>
-          )}
-        </div>
-      </a>
-      
-      <div className="flex flex-col flex-1">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="text-lg font-medium line-clamp-2 group-hover:text-orange-500 transition-colors" dangerouslySetInnerHTML={{ __html: video.title }} />
-          <button 
-            onClick={(e) => { e.preventDefault(); onReview(); }}
-            className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-orange-500/50 transition-colors shrink-0"
-            title="Rate & Review"
-          >
-            <Star className="w-4 h-4 text-orange-500" />
-          </button>
         </div>
 
+        <a
+          href={video.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onWatch}
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+        >
+          <div className="w-16 h-16 rounded-full bg-orange-500 flex items-center justify-center text-black scale-75 group-hover:scale-100 transition-transform duration-500 shadow-2xl shadow-orange-500/50">
+            <Play className="w-8 h-8 fill-current ml-1" />
+          </div>
+        </a>
+      </div>
+
+      <div className="p-6 flex flex-col flex-1">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <h3 className="font-serif text-xl leading-tight group-hover:text-orange-500 transition-colors line-clamp-2" dangerouslySetInnerHTML={{ __html: video.title }} />
+        </div>
+        
+        <p className="text-white/40 text-sm mb-4 line-clamp-1">{video.channel}</p>
+
         {video.reason && (
-          <div className="mb-4 p-3 rounded-xl bg-orange-500/5 border border-orange-500/10">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-orange-500/60 mb-1">
-              <Sparkles className="w-3 h-3" />
-              Why this?
-            </div>
-            <p className="text-xs text-white/60 leading-relaxed italic">
-              "{video.reason}"
-            </p>
+          <div className="mb-6 p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-white/60 italic leading-relaxed">
+            "{video.reason}"
           </div>
         )}
 
-        <div className="mt-auto flex items-center justify-between text-white/40 text-sm">
-          <span className="flex items-center gap-2">
-            <Tv className="w-4 h-4" />
-            {video.channel}
-          </span>
-          <span>{new Date(video.publishedAt).getFullYear()}</span>
+        <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {stats && (
+              <>
+                <div className="flex items-center gap-1 text-orange-500">
+                  <Star className="w-4 h-4 fill-current" />
+                  <span className="text-sm font-bold">{stats.averageRating.toFixed(1)}</span>
+                </div>
+                <div className="text-white/40 text-xs">{stats.reviewCount} reviews</div>
+              </>
+            )}
+          </div>
+          
+          <button 
+            onClick={() => onReview()}
+            className="p-2 rounded-full hover:bg-white/10 text-white/40 hover:text-orange-500 transition-all"
+            title="Write a review"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </motion.div>
