@@ -287,49 +287,67 @@ export default function App() {
       });
 
       console.log("Gemini API Response received");
-      const recommendationData = JSON.parse(response.text || "[]");
+      let recommendationData: any[] = [];
+      try {
+        const rawText = response.text || "[]";
+        // Remove markdown formatting if present
+        const cleanText = rawText.replace(/```json\n?|```/g, '').trim();
+        recommendationData = JSON.parse(cleanText);
+      } catch (e) {
+        console.error("Failed to parse Gemini response:", e, response.text);
+        throw new Error("The Genie had trouble organizing its thoughts. Please try again!");
+      }
       
       if (!Array.isArray(recommendationData) || recommendationData.length === 0) {
-        throw new Error("Genie couldn't find specific recommendations for this mood. Try a different request!");
+        throw new Error("The Genie couldn't find specific recommendations for this mood. Try a different request!");
       }
 
       const allSuggestions: Suggestion[] = [];
+      let lastYouTubeError: string | null = null;
 
       // Fetch Language-specific videos (Top 8)
       for (let i = 0; i < recommendationData.length && i < 8; i++) {
         const item = recommendationData[i];
-        const query = (item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`) + " short film -trailer -teaser -clip";
+        // Simplify query - don't double up on "short film" and don't be too restrictive
+        const baseQuery = item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`;
+        const query = baseQuery.toLowerCase().includes("short film") 
+          ? baseQuery 
+          : `${baseQuery} short film`;
+        
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
-        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
-        const text = await res.text();
-        let data;
         try {
-          data = JSON.parse(text);
+          const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
+          const data = await res.json();
+          
+          if (res.ok && data.items && data.items.length > 0) {
+            const video: YouTubeVideo = data.items[0];
+            allSuggestions.push({
+              id: typeof video.id === 'string' ? video.id : video.id.videoId,
+              title: video.snippet.title,
+              thumbnail: video.snippet.thumbnails.high.url,
+              channel: video.snippet.channelTitle,
+              type: 'cinema',
+              label: `${selectedLanguage} Pick`,
+              reason: item?.reason || `Highly rated content in ${selectedLanguage}.`,
+              summary: item?.summary || "A compelling short film exploring deep themes and storytelling.",
+              link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
+              publishedAt: video.snippet.publishedAt
+            });
+          } else if (!res.ok) {
+            lastYouTubeError = data.error || res.statusText;
+            console.error("YouTube query failed:", lastYouTubeError);
+          }
         } catch (e) {
-          console.error("Failed to parse YouTube response as JSON. Raw text:", text);
-          continue; // Skip failed queries
-        }
-        
-        if (res.ok && data.items && data.items.length > 0) {
-          const video: YouTubeVideo = data.items[0];
-          allSuggestions.push({
-            id: typeof video.id === 'string' ? video.id : video.id.videoId,
-            title: video.snippet.title,
-            thumbnail: video.snippet.thumbnails.high.url,
-            channel: video.snippet.channelTitle,
-            type: 'cinema',
-            label: `${selectedLanguage} Pick`,
-            reason: item?.reason || `Highly rated content in ${selectedLanguage}.`,
-            summary: item?.summary || "A compelling short film exploring deep themes and storytelling.",
-            link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
-            publishedAt: video.snippet.publishedAt
-          });
+          console.error("YouTube fetch exception:", e);
         }
       }
 
       if (allSuggestions.length === 0) {
-        throw new Error("Genie found some ideas, but YouTube didn't have the full films available. Try adjusting your mood tags!");
+        if (lastYouTubeError) {
+          throw new Error(`YouTube API Error: ${lastYouTubeError}. Please check your API key and quota.`);
+        }
+        throw new Error("The Genie found some ideas, but YouTube didn't have the full films available. Try adjusting your mood tags or selecting a different language!");
       }
 
       setSuggestions(allSuggestions);
