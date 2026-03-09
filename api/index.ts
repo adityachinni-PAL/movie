@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 let db: Database.Database;
 try {
   // On Vercel, the filesystem is read-only except for /tmp
-  const dbPath = process.env.VERCEL ? "/tmp/chinni_movie_app.db" : "chinni_movie_app.db";
+  const dbPath = process.env.VERCEL ? "/tmp/pal_theater.db" : "pal_theater.db";
   db = new Database(dbPath);
 } catch (err) {
   console.error("Failed to initialize database, using in-memory:", err);

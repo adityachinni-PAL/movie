@@ -61,11 +61,11 @@ const MOOD_TAGS = [
   'Mind-Bending', 'Heartwarming', 'Adrenaline', 'Bittersweet', 'Cozy', 'Tear-Jerker', 'Spooky', 'Inspiring'
 ];
 
-const WHY_CHINNI = [
-  { title: 'No Noise', desc: 'We filter out trailers, clips, and "Top 10" lists using AI.' },
-  { title: 'Emotional Intelligence', desc: 'Search by mood, not just keywords. We understand the "vibe".' },
-  { title: 'Family Safe', desc: 'Strict filters ensure no adult content, even in Romance.' },
-  { title: 'Language First', desc: 'Deep focus on regional cinema that YouTube often buries.' }
+const WHY_PAL = [
+  { title: 'AI-Powered Precision', desc: 'Our advanced algorithms filter out trailers, clips, and promotional noise to deliver only full-length cinematic experiences.' },
+  { title: 'Mood-Centric Discovery', desc: 'Beyond simple keywords, PAL Theater understands the emotional resonance of your request, matching films to your exact mood.' },
+  { title: 'Curated Safety', desc: 'We maintain a strictly family-friendly environment with rigorous content filtering across all genres, including romance and drama.' },
+  { title: 'Global Perspective', desc: 'We prioritize regional and independent cinema, bringing hidden gems from across the globe directly to your screen.' }
 ];
 
 const GENIE_HELP = [
@@ -109,7 +109,7 @@ export default function App() {
   const [videoReviews, setVideoReviews] = useState<Review[]>([]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('chinni_user');
+    const savedUser = localStorage.getItem('pal_theater_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
@@ -143,7 +143,7 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         setUser(data);
-        localStorage.setItem('chinni_user', JSON.stringify(data));
+        localStorage.setItem('pal_theater_user', JSON.stringify(data));
         setShowAuthModal(false);
         setUsername('');
         setPassword('');
@@ -157,7 +157,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('chinni_user');
+    localStorage.removeItem('pal_theater_user');
     setShowProfile(false);
   };
 
@@ -323,7 +323,7 @@ export default function App() {
       <nav className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-white/5 bg-black/50 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Film className="w-6 h-6 text-orange-500" />
-          <span className="font-serif italic text-xl tracking-tight">Chinni</span>
+          <span className="font-serif italic text-xl tracking-tight">PAL Theater</span>
         </div>
         <div className="flex items-center gap-4">
           {user ? (
@@ -460,13 +460,13 @@ export default function App() {
             className="relative mb-12"
           >
             <div className="absolute -top-3 left-6 px-2 bg-black text-orange-500 text-[10px] font-bold uppercase tracking-[0.2em] z-20">
-              The Movie Genie
+              The PAL Genie
             </div>
             <div className="p-8 rounded-3xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
               <div className="flex flex-col md:flex-row gap-8">
                 <div className="flex-1">
                   <p className="text-white/60 text-sm mb-4">
-                    Describe your mood or a specific story you're looking for. The Genie will find it.
+                    Describe your mood or a specific story you're looking for. The PAL Genie will find it.
                   </p>
                   <div className="flex gap-4 mb-6">
                     <div className="relative flex-1">
@@ -486,7 +486,7 @@ export default function App() {
                       className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                      Ask Genie
+                      Ask PAL Genie
                     </button>
                   </div>
 
@@ -515,7 +515,7 @@ export default function App() {
                 </div>
 
                 <div className="w-full md:w-64 p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold block mb-3">Genie Help</span>
+                  <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold block mb-3">PAL Genie Help</span>
                   <ul className="space-y-3">
                     {GENIE_HELP.slice(0, 3).map((help, i) => (
                       <li key={i} className="text-[11px] text-white/50 leading-relaxed flex gap-2">
@@ -538,10 +538,10 @@ export default function App() {
           >
             <div className="flex flex-col md:flex-row items-center gap-8">
               <div className="flex-1">
-                <h3 className="text-2xl font-serif italic mb-2">Why Chinni?</h3>
+                <h3 className="text-2xl font-serif italic mb-2">Why PAL Theater?</h3>
                 <p className="text-white/40 text-sm mb-6">How we beat regular YouTube search for your movie night.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {WHY_CHINNI.map((item, i) => (
+                  {WHY_PAL.map((item, i) => (
                     <motion.div 
                       key={i}
                       whileHover={{ x: 10 }}
@@ -655,7 +655,7 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-md p-8 rounded-3xl bg-[#151619] border border-white/10 shadow-2xl"
             >
-              <h2 className="text-3xl font-serif italic mb-2">{isLogin ? 'Welcome Back' : 'Join Chinni'}</h2>
+              <h2 className="text-3xl font-serif italic mb-2">{isLogin ? 'Welcome Back' : 'Join PAL Theater'}</h2>
               <p className="text-white/40 text-sm mb-8">
                 {isLogin ? 'Sign in to access your personalized picks.' : 'Create an account to save your preferences.'}
               </p>
@@ -736,7 +736,7 @@ export default function App() {
                             : [...(user?.preferredGenres || []), genre];
                           const updatedUser = { ...user!, preferredGenres: newGenres };
                           setUser(updatedUser);
-                          localStorage.setItem('chinni_user', JSON.stringify(updatedUser));
+                          localStorage.setItem('pal_theater_user', JSON.stringify(updatedUser));
                           fetch('/api/user/preferences', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
