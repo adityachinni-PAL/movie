@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Suggestion, YouTubeVideo, User, Review, WatchHistory } from './types';
 
 function cn(...inputs: ClassValue[]) {
@@ -61,9 +61,19 @@ const MOOD_TAGS = [
   'Mind-Bending', 'Heartwarming', 'Adrenaline', 'Bittersweet', 'Cozy', 'Tear-Jerker', 'Spooky', 'Inspiring'
 ];
 
+const FESTIVALS = [
+  "Clermont‑Ferrand International Short Film Festival",
+  "Festival de Cannes Short Film Palme d’Or",
+  "Palm Springs International ShortFest",
+  "Aspen Shortsfest (USA)",
+  "LA Shorts International Film Festival",
+  "AFI FEST"
+];
+
 const WHY_PAL = [
   { title: 'AI-Powered Precision', desc: 'Our advanced algorithms filter out trailers, clips, and promotional noise to deliver only full-length cinematic experiences.' },
   { title: 'Mood-Centric Discovery', desc: 'Beyond simple keywords, PAL Theater understands the emotional resonance of your request, matching films to your exact mood.' },
+  { title: 'Festival Excellence', desc: 'Direct access to award-winning content from prestigious festivals like Cannes, Clermont-Ferrand, and AFI FEST.' },
   { title: 'Curated Safety', desc: 'We maintain a strictly family-friendly environment with rigorous content filtering across all genres, including romance and drama.' },
   { title: 'Global Perspective', desc: 'We prioritize regional and independent cinema, bringing hidden gems from across the globe directly to your screen.' }
 ];
@@ -79,6 +89,7 @@ const GENIE_HELP = [
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [selectedFestival, setSelectedFestival] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -206,12 +217,13 @@ export default function App() {
     setVideoReviews(data.reviews);
   };
 
-  const fetchSuggestions = async (genre: string | null) => {
+  const fetchSuggestions = async (genre: string | null, festival: string | null = null) => {
     setLoading(true);
     setError(null);
-    // Use the passed genre or the currently selected one
+    // Use the passed values or the currently selected ones
     const activeGenre = genre || selectedGenre;
-    console.log("Starting fetchSuggestions for genre:", activeGenre, "mood:", moodInput);
+    const activeFestival = festival || selectedFestival;
+    console.log("Starting fetchSuggestions for genre:", activeGenre, "festival:", activeFestival, "mood:", moodInput);
     
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -232,6 +244,7 @@ export default function App() {
       const filterContext = `
         Language: ${selectedLanguage}
         Genre: ${activeGenre || 'Any'}
+        Festival Selection: ${activeFestival || 'Any'}
         Actor Filter: ${actorFilter || 'None'}
         Director Filter: ${directorFilter || 'None'}
         Duration Preference: ${durationFilter === 'any' ? 'Any' : durationFilter}
@@ -241,8 +254,9 @@ export default function App() {
 
       const prompt = `I am building a movie recommendation app. 
       ${prefContext} ${historyContext} ${filterContext}
-      Please provide 8 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood, genre, and preferences.
+      Please provide 8 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood, genre, festival selection, and preferences.
       CRITICAL: Focus ONLY on single, full-length short films. Exclude full-length feature movies, clips, teasers, trailers, promotional snippets, "Top 10" lists, "Best of" compilations, and "Table of Contents" style videos.
+      If a festival is selected, prioritize films that have been screened or won awards at that specific festival.
       If an actor or director is specified, prioritize them in the queries.
       STRICT POLICY: Ensure all recommendations are family-friendly. ABSOLUTELY NO adult content, NSFW material, or sexually explicit content, even for the "Romance" genre.
       Return the result as a JSON array of objects, where each object has:
@@ -254,20 +268,37 @@ export default function App() {
       console.log("Calling Gemini API...");
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                query: { type: Type.STRING },
+                reason: { type: Type.STRING },
+                summary: { type: Type.STRING }
+              },
+              required: ["query", "reason", "summary"]
+            }
+          }
         }
       });
 
       console.log("Gemini API Response received");
       const recommendationData = JSON.parse(response.text || "[]");
+      
+      if (!Array.isArray(recommendationData) || recommendationData.length === 0) {
+        throw new Error("Genie couldn't find specific recommendations for this mood. Try a different request!");
+      }
+
       const allSuggestions: Suggestion[] = [];
 
       // Fetch Language-specific videos (Top 8)
       for (let i = 0; i < recommendationData.length && i < 8; i++) {
         const item = recommendationData[i];
-        const query = (item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        const query = (item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`) + " short film -trailer -teaser -clip";
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
@@ -297,6 +328,10 @@ export default function App() {
         }
       }
 
+      if (allSuggestions.length === 0) {
+        throw new Error("Genie found some ideas, but YouTube didn't have the full films available. Try adjusting your mood tags!");
+      }
+
       setSuggestions(allSuggestions);
     } catch (err: any) {
       console.error("Detailed Recommendation Error:", err);
@@ -307,8 +342,15 @@ export default function App() {
   };
 
   const handleGenreSelect = (genre: string) => {
-    setSelectedGenre(genre);
-    fetchSuggestions(genre);
+    const newGenre = genre === selectedGenre ? null : genre;
+    setSelectedGenre(newGenre);
+    fetchSuggestions(newGenre, selectedFestival);
+  };
+
+  const handleFestivalSelect = (festival: string) => {
+    const newFestival = festival === selectedFestival ? null : festival;
+    setSelectedFestival(newFestival);
+    fetchSuggestions(selectedGenre, newFestival);
   };
 
   return (
@@ -368,8 +410,35 @@ export default function App() {
             transition={{ delay: 0.05 }}
             className="text-white/60 text-lg mb-8 max-w-2xl"
           >
-            Select your preferred language and click on a genre icon to get started.
+            Select your preferred language and explore curated festival winners or genres.
           </motion.p>
+          
+          {/* Festival Grid */}
+          <section className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-serif italic text-white/60">Festival Selections</h2>
+              <span className="text-[10px] text-white/30 uppercase tracking-widest">Award-winning content</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              {FESTIVALS.map((festival, idx) => (
+                <motion.button
+                  key={festival}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.05 }}
+                  onClick={() => handleFestivalSelect(festival)}
+                  className={cn(
+                    "group relative p-3 rounded-xl border transition-all duration-300 text-center overflow-hidden",
+                    selectedFestival === festival 
+                      ? "bg-orange-500 border-orange-400 text-black" 
+                      : "bg-white/5 border-white/10 hover:border-orange-500/50 hover:bg-white/10"
+                  )}
+                >
+                  <span className="relative z-10 text-[10px] font-bold uppercase tracking-tight leading-tight block line-clamp-2">{festival}</span>
+                </motion.button>
+              ))}
+            </div>
+          </section>
           
           {/* Advanced Filters */}
           <motion.div 
