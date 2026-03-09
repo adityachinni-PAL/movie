@@ -23,6 +23,7 @@ export interface Suggestion {
   type: 'cinema' | 'trending';
   label?: string;
   reason?: string;
+  summary?: string;
   link: string;
   publishedAt: string;
   duration?: string;

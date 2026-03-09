@@ -57,6 +57,25 @@ const LANGUAGE_OPTIONS = [
   { label: 'Marathi', value: 'Marathi' }
 ];
 
+const MOOD_TAGS = [
+  'Mind-Bending', 'Heartwarming', 'Adrenaline', 'Bittersweet', 'Cozy', 'Tear-Jerker', 'Spooky', 'Inspiring'
+];
+
+const WHY_CHINNI = [
+  { title: 'No Noise', desc: 'We filter out trailers, clips, and "Top 10" lists using AI.' },
+  { title: 'Emotional Intelligence', desc: 'Search by mood, not just keywords. We understand the "vibe".' },
+  { title: 'Family Safe', desc: 'Strict filters ensure no adult content, even in Romance.' },
+  { title: 'Language First', desc: 'Deep focus on regional cinema that YouTube often buries.' }
+];
+
+const GENIE_HELP = [
+  "A story about a father and daughter that makes me cry but has a happy ending",
+  "A mind-bending sci-fi set in a single room",
+  "A heartwarming comedy about a dog in a small village",
+  "A high-adrenaline thriller with a massive twist at the end",
+  "A cozy romance set in the rainy season"
+];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
@@ -80,6 +99,7 @@ export default function App() {
   const [actorFilter, setActorFilter] = useState('');
   const [directorFilter, setDirectorFilter] = useState('');
   const [moodInput, setMoodInput] = useState('');
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [durationFilter, setDurationFilter] = useState('any');
 
   // Review State
@@ -189,12 +209,12 @@ export default function App() {
   const fetchSuggestions = async (genre: string | null) => {
     setLoading(true);
     setError(null);
-    console.log("Starting fetchSuggestions for genre:", genre, "mood:", moodInput);
+    // Use the passed genre or the currently selected one
+    const activeGenre = genre || selectedGenre;
+    console.log("Starting fetchSuggestions for genre:", activeGenre, "mood:", moodInput);
     
     try {
       const apiKey = process.env.GEMINI_API_KEY;
-      console.log("Gemini API Key status:", apiKey ? "Present (length: " + apiKey.length + ")" : "Missing");
-      
       if (!apiKey || apiKey.trim() === "") {
         throw new Error("GEMINI_API_KEY is missing. Please add it to your Vercel Environment Variables and REDEPLOY.");
       }
@@ -211,21 +231,25 @@ export default function App() {
 
       const filterContext = `
         Language: ${selectedLanguage}
+        Genre: ${activeGenre || 'Any'}
         Actor Filter: ${actorFilter || 'None'}
         Director Filter: ${directorFilter || 'None'}
         Duration Preference: ${durationFilter === 'any' ? 'Any' : durationFilter}
         User Mood/Request: ${moodInput || 'None'}
+        Selected Mood Tag: ${selectedMood || 'None'}
       `;
 
-      const prompt = `I am building a movie recommendation app. ${genre ? `The user selected the genre "${genre}".` : ''} 
+      const prompt = `I am building a movie recommendation app. 
       ${prefContext} ${historyContext} ${filterContext}
-      Please provide 3 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood and preferences.
+      Please provide 8 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood, genre, and preferences.
       CRITICAL: Focus ONLY on single, full-length short films. Exclude full-length feature movies, clips, teasers, trailers, promotional snippets, "Top 10" lists, "Best of" compilations, and "Table of Contents" style videos.
       If an actor or director is specified, prioritize them in the queries.
-      Also provide 2 search queries for trending entertainment short films in English ONLY.
       STRICT POLICY: Ensure all recommendations are family-friendly. ABSOLUTELY NO adult content, NSFW material, or sexually explicit content, even for the "Romance" genre.
-      Return the result as a JSON array of objects, where each object has "query" (string) and "reason" (a short, 1-sentence explanation of why this is recommended based on user mood/preferences). 
-      First 3 objects are ${selectedLanguage}, last 2 are English.`;
+      Return the result as a JSON array of objects, where each object has:
+      - "query": (string) The YouTube search query.
+      - "reason": (string) A short, 1-sentence explanation of why this is recommended based on user mood/preferences.
+      - "summary": (string) A clean, 2-3 sentence plot summary or "what to expect" for this recommendation.
+      Return exactly 8 objects for ${selectedLanguage}.`;
       
       console.log("Calling Gemini API...");
       const response = await ai.models.generateContent({
@@ -240,10 +264,10 @@ export default function App() {
       const recommendationData = JSON.parse(response.text || "[]");
       const allSuggestions: Suggestion[] = [];
 
-      // Fetch Language-specific videos (Top 3)
-      for (let i = 0; i < 3; i++) {
+      // Fetch Language-specific videos (Top 8)
+      for (let i = 0; i < recommendationData.length && i < 8; i++) {
         const item = recommendationData[i];
-        const query = (item?.query || `${genre || 'popular'} ${selectedLanguage} short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
+        const query = (item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
         console.log(`Fetching YouTube results for query ${i+1}:`, query);
         
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
@@ -253,13 +277,10 @@ export default function App() {
           data = JSON.parse(text);
         } catch (e) {
           console.error("Failed to parse YouTube response as JSON. Raw text:", text);
-          throw new Error(`YouTube Search Error (Query ${i+1}): Server returned invalid JSON. Check console for details.`);
+          continue; // Skip failed queries
         }
         
-        if (!res.ok) {
-          throw new Error(`YouTube Search Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
-        }
-        if (data.items && data.items.length > 0) {
+        if (res.ok && data.items && data.items.length > 0) {
           const video: YouTubeVideo = data.items[0];
           allSuggestions.push({
             id: typeof video.id === 'string' ? video.id : video.id.videoId,
@@ -269,41 +290,7 @@ export default function App() {
             type: 'cinema',
             label: `${selectedLanguage} Pick`,
             reason: item?.reason || `Highly rated content in ${selectedLanguage}.`,
-            link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
-            publishedAt: video.snippet.publishedAt
-          });
-        }
-      }
-
-      // Fetch Trending videos (Top 2)
-      for (let i = 3; i < 5; i++) {
-        const item = recommendationData[i];
-        const query = (item?.query || `trending entertainment English short film`) + " \"short film\" -trailer -teaser -clip -shorts -top10 -bestof -movie";
-        console.log(`Fetching YouTube trending results for query ${i+1}:`, query);
-        
-        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=1&order=${sortBy}`);
-        const text = await res.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          console.error("Failed to parse YouTube trending response as JSON. Raw text:", text);
-          throw new Error(`YouTube Trending Error (Query ${i+1}): Server returned invalid JSON. Check console for details.`);
-        }
-        
-        if (!res.ok) {
-          throw new Error(`YouTube Trending Error (Query ${i+1}): ${data.error || res.statusText || "Unknown Error"}`);
-        }
-        if (data.items && data.items.length > 0) {
-          const video: YouTubeVideo = data.items[0];
-          allSuggestions.push({
-            id: typeof video.id === 'string' ? video.id : video.id.videoId,
-            title: video.snippet.title,
-            thumbnail: video.snippet.thumbnails.high.url,
-            channel: video.snippet.channelTitle,
-            type: 'trending',
-            label: 'Trending',
-            reason: item?.reason || "Currently popular across the platform.",
+            summary: item?.summary || "A compelling short film exploring deep themes and storytelling.",
             link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
             publishedAt: video.snippet.publishedAt
           });
@@ -369,9 +356,10 @@ export default function App() {
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-5xl md:text-7xl font-serif font-light tracking-tight mb-4"
+            className="text-5xl md:text-7xl font-serif font-light tracking-tight mb-4 flex flex-wrap items-baseline gap-4"
           >
-            What's the <span className="italic text-orange-500">mood</span> tonight?
+            <span>What's the <span className="italic text-orange-500">mood</span> tonight?</span>
+            <span className="text-sm md:text-base font-sans font-bold text-white/20 uppercase tracking-[0.4em] border-l border-white/10 pl-4">Short Film Search</span>
           </motion.h1>
 
           <motion.p
@@ -474,30 +462,99 @@ export default function App() {
             <div className="absolute -top-3 left-6 px-2 bg-black text-orange-500 text-[10px] font-bold uppercase tracking-[0.2em] z-20">
               The Movie Genie
             </div>
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
-              <p className="text-white/60 text-sm mb-4">
-                Describe your mood or a specific story you're looking for. The Genie will find it.
-              </p>
-              <div className="flex gap-4">
-                <div className="relative flex-1">
-                  <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500" />
-                  <input
-                    type="text"
-                    placeholder="e.g. A heartwarming story about a dog in a small village..."
-                    value={moodInput}
-                    onChange={(e) => setMoodInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && fetchSuggestions(null)}
-                    className="w-full bg-black/50 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-lg focus:outline-none focus:border-orange-500/50 transition-all"
-                  />
+            <div className="p-8 rounded-3xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
+              <div className="flex flex-col md:flex-row gap-8">
+                <div className="flex-1">
+                  <p className="text-white/60 text-sm mb-4">
+                    Describe your mood or a specific story you're looking for. The Genie will find it.
+                  </p>
+                  <div className="flex gap-4 mb-6">
+                    <div className="relative flex-1">
+                      <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500" />
+                      <input
+                        type="text"
+                        placeholder="e.g. A heartwarming story about a dog in a small village..."
+                        value={moodInput}
+                        onChange={(e) => setMoodInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && fetchSuggestions(null)}
+                        className="w-full bg-black/50 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-lg focus:outline-none focus:border-orange-500/50 transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={() => fetchSuggestions(null)}
+                      disabled={loading || (!moodInput.trim() && !selectedMood)}
+                      className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                      Ask Genie
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Try these moods:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {MOOD_TAGS.map(tag => (
+                        <button
+                          key={tag}
+                          onClick={() => {
+                            setSelectedMood(tag === selectedMood ? null : tag);
+                            if (tag !== selectedMood) fetchSuggestions(null);
+                          }}
+                          className={cn(
+                            "px-4 py-1.5 rounded-full text-xs transition-all border",
+                            selectedMood === tag 
+                              ? "bg-orange-500 border-orange-400 text-black font-bold" 
+                              : "bg-white/5 border-white/10 text-white/60 hover:border-orange-500/50"
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => fetchSuggestions(null)}
-                  disabled={loading || !moodInput.trim()}
-                  className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                  Ask Genie
-                </button>
+
+                <div className="w-full md:w-64 p-4 rounded-2xl bg-white/5 border border-white/10">
+                  <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold block mb-3">Genie Help</span>
+                  <ul className="space-y-3">
+                    {GENIE_HELP.slice(0, 3).map((help, i) => (
+                      <li key={i} className="text-[11px] text-white/50 leading-relaxed flex gap-2">
+                        <span className="text-orange-500">•</span>
+                        <span>{help}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Comparison Section */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mb-16 p-8 rounded-3xl bg-white/5 border border-white/10 group hover:bg-white/[0.07] transition-all duration-500"
+          >
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="flex-1">
+                <h3 className="text-2xl font-serif italic mb-2">Why Chinni?</h3>
+                <p className="text-white/40 text-sm mb-6">How we beat regular YouTube search for your movie night.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {WHY_CHINNI.map((item, i) => (
+                    <motion.div 
+                      key={i}
+                      whileHover={{ x: 10 }}
+                      className="space-y-1"
+                    >
+                      <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">{item.title}</h4>
+                      <p className="text-xs text-white/60 leading-relaxed">{item.desc}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+              <div className="w-48 h-48 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 group-hover:scale-110 transition-transform duration-700">
+                <Sparkles className="w-20 h-20 text-orange-500 opacity-20" />
               </div>
             </div>
           </motion.div>
@@ -550,35 +607,15 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-12"
             >
-              {/* Language-specific Picks */}
+              {/* Cinema Picks */}
               <div>
                 <div className="flex items-center gap-3 mb-8">
-                  <Languages className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-2xl font-serif italic">{selectedLanguage} Cinema Picks</h2>
+                  <Sparkles className="w-5 h-5 text-orange-500" />
+                  <h2 className="text-2xl font-serif italic">Curated for You</h2>
                   <div className="h-[1px] flex-1 bg-white/10" />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {suggestions.filter(s => s.type === 'cinema').map((video, idx) => (
-                    <VideoCard 
-                      key={video.id} 
-                      video={video} 
-                      index={idx} 
-                      onWatch={() => addToHistory(video)}
-                      onReview={() => { setActiveVideoForReview(video); fetchReviews(video.id); }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Trending Picks */}
-              <div>
-                <div className="flex items-center gap-3 mb-8">
-                  <TrendingUp className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-2xl font-serif italic">Trending Entertainment</h2>
-                  <div className="h-[1px] flex-1 bg-white/10" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {suggestions.filter(s => s.type === 'trending').map((video, idx) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {suggestions.map((video, idx) => (
                     <VideoCard 
                       key={video.id} 
                       video={video} 
@@ -889,9 +926,12 @@ function VideoCard({ video, index, onWatch, onReview }: { video: Suggestion, ind
         
         <p className="text-white/40 text-sm mb-4 line-clamp-1">{video.channel}</p>
 
-        {video.reason && (
-          <div className="mb-6 p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-white/60 italic leading-relaxed">
-            "{video.reason}"
+        {video.summary && (
+          <div className="mb-6 p-4 rounded-2xl bg-orange-500/5 border border-orange-500/10">
+            <span className="text-[10px] text-orange-500 uppercase tracking-widest font-bold block mb-2">Plot Summary</span>
+            <p className="text-xs text-white/70 leading-relaxed">
+              {video.summary}
+            </p>
           </div>
         )}
 
