@@ -86,6 +86,45 @@ const GENIE_HELP = [
   "A cozy romance set in the rainy season"
 ];
 
+const FALLBACK_FILMS: Suggestion[] = [
+  {
+    id: "9I9Ar6upx34",
+    title: "The Neighbors' Window - Oscar Winning Short Film",
+    thumbnail: "https://i.ytimg.com/vi/9I9Ar6upx34/maxresdefault.jpg",
+    channel: "Marshall Curry",
+    type: 'cinema',
+    label: "PAL Classic",
+    reason: "An Academy Award winner that perfectly captures human connection.",
+    summary: "A middle-aged woman's life is shaken up when two free-spirited twenty-somethings move in across the street.",
+    link: "https://www.youtube.com/watch?v=9I9Ar6upx34",
+    publishedAt: "2019-01-01T00:00:00Z"
+  },
+  {
+    id: "W0LHTWG-UmQ",
+    title: "SKIN - Oscar Winning Short Film",
+    thumbnail: "https://i.ytimg.com/vi/W0LHTWG-UmQ/maxresdefault.jpg",
+    channel: "Fox Searchlight",
+    type: 'cinema',
+    label: "PAL Classic",
+    reason: "A powerful exploration of social themes and consequences.",
+    summary: "A small town in America, a black man smiles at a 10-year-old white boy across a supermarket checkout aisle.",
+    link: "https://www.youtube.com/watch?v=W0LHTWG-UmQ",
+    publishedAt: "2018-01-01T00:00:00Z"
+  },
+  {
+    id: "L_T8T898p-M",
+    title: "The Silent Child - Oscar Winning Short Film",
+    thumbnail: "https://i.ytimg.com/vi/L_T8T898p-M/maxresdefault.jpg",
+    channel: "Slick Films",
+    type: 'cinema',
+    label: "PAL Classic",
+    reason: "A touching story about communication and understanding.",
+    summary: "A profoundly deaf four-year-old girl lives a silent life until a social worker teaches her the gift of communication.",
+    link: "https://www.youtube.com/watch?v=L_T8T898p-M",
+    publishedAt: "2017-01-01T00:00:00Z"
+  }
+];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
@@ -112,6 +151,8 @@ export default function App() {
   const [moodInput, setMoodInput] = useState('');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [durationFilter, setDurationFilter] = useState('any');
+  const [trendingVideos, setTrendingVideos] = useState<YouTubeVideo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<Suggestion | null>(null);
 
   // Review State
   const [activeVideoForReview, setActiveVideoForReview] = useState<Suggestion | null>(null);
@@ -141,6 +182,21 @@ export default function App() {
     };
     checkHealth();
   }, []);
+
+  useEffect(() => {
+    const fetchTrending = async () => {
+      try {
+        const res = await fetch(`/api/youtube/trending?language=${selectedLanguage}`);
+        const data = await res.json();
+        if (res.ok) {
+          setTrendingVideos(data.items || []);
+        }
+      } catch (err) {
+        console.error("Trending fetch error:", err);
+      }
+    };
+    fetchTrending();
+  }, [selectedLanguage]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,16 +310,21 @@ export default function App() {
 
       const prompt = `I am building a movie recommendation app. 
       ${prefContext} ${historyContext} ${filterContext}
-      Please provide 8 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood, genre, festival selection, and preferences.
-      CRITICAL: Focus ONLY on single, full-length short films. Exclude full-length feature movies, clips, teasers, trailers, promotional snippets, "Top 10" lists, "Best of" compilations, and "Table of Contents" style videos.
-      If a festival is selected, prioritize films that have been screened or won awards at that specific festival.
-      If an actor or director is specified, prioritize them in the queries.
-      STRICT POLICY: Ensure all recommendations are family-friendly. ABSOLUTELY NO adult content, NSFW material, or sexually explicit content, even for the "Romance" genre.
+      Please provide 4 specific search queries for YouTube to find the best, latest, and most popular full-length ${selectedLanguage} short films that match the user's mood, genre, festival selection, and preferences.
+      
+      CRITICAL INSTRUCTIONS:
+      1. Focus ONLY on single, full-length short films. 
+      2. ABSOLUTELY NO web series, trailers, clips, teasers, "Top 10" lists, or promotional snippets.
+      3. If a festival is selected (${activeFestival}), you MUST prioritize films that have actually screened or won awards at that specific festival.
+      4. Ensure the results are in the ${selectedLanguage} language.
+      5. If an actor or director is specified, prioritize them.
+      6. STRICT POLICY: Family-friendly content only. No adult/NSFW material.
+      
       Return the result as a JSON array of objects, where each object has:
       - "query": (string) The YouTube search query.
       - "reason": (string) A short, 1-sentence explanation of why this is recommended based on user mood/preferences.
       - "summary": (string) A clean, 2-3 sentence plot summary or "what to expect" for this recommendation.
-      Return exactly 8 objects for ${selectedLanguage}.`;
+      Return exactly 4 objects for ${selectedLanguage}.`;
       
       console.log("Calling Gemini API...");
       const response = await ai.models.generateContent({
@@ -305,8 +366,8 @@ export default function App() {
       const allSuggestions: Suggestion[] = [];
       let lastYouTubeError: string | null = null;
 
-      // Fetch Language-specific videos (Top 8)
-      for (let i = 0; i < recommendationData.length && i < 8; i++) {
+      // Fetch Language-specific videos (Top 4)
+      for (let i = 0; i < recommendationData.length && i < 4; i++) {
         const item = recommendationData[i];
         // Simplify query - don't double up on "short film" and don't be too restrictive
         const baseQuery = item?.query || `${activeGenre || 'popular'} ${selectedLanguage} short film`;
@@ -344,6 +405,11 @@ export default function App() {
       }
 
       if (allSuggestions.length === 0) {
+        if (lastYouTubeError && lastYouTubeError.toLowerCase().includes("quota")) {
+          setSuggestions(FALLBACK_FILMS);
+          setError("The Genie's YouTube search quota is full for today, so we've loaded some PAL Classics for you instead! Please check your Google Cloud Console to increase your quota.");
+          return;
+        }
         if (lastYouTubeError) {
           throw new Error(`YouTube API Error: ${lastYouTubeError}. Please check your API key and quota.`);
         }
@@ -362,13 +428,90 @@ export default function App() {
   const handleGenreSelect = (genre: string) => {
     const newGenre = genre === selectedGenre ? null : genre;
     setSelectedGenre(newGenre);
-    fetchSuggestions(newGenre, selectedFestival);
+    setSelectedFestival(null); // Clear festival when picking genre/genie
+    fetchSuggestions(newGenre, null);
   };
 
   const handleFestivalSelect = (festival: string) => {
     const newFestival = festival === selectedFestival ? null : festival;
     setSelectedFestival(newFestival);
-    fetchSuggestions(selectedGenre, newFestival);
+    setSelectedGenre(null); // Clear genre when picking festival
+    setMoodInput(''); // Clear genie input
+    setSelectedMood(null); // Clear mood tag
+    fetchSuggestions(null, newFestival);
+  };
+
+  const handleGenieSearch = () => {
+    setSelectedFestival(null); // Clear festival when using genie
+    fetchSuggestions(selectedGenre, null);
+  };
+
+  const renderResults = () => {
+    if (loading) {
+      return (
+        <div className="py-20 flex flex-col items-center justify-center gap-4">
+          <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
+          <p className="text-white/40 font-serif italic">The PAL Genie is curating your cinema experience...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="py-12 px-6 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-center mb-12">
+          {error}
+        </div>
+      );
+    }
+
+    if (suggestions.length === 0) return null;
+
+    return (
+      <div className="mb-16">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-3xl font-serif italic mb-2">
+              {selectedFestival ? `Winners from ${selectedFestival}` : 'Curated for your Mood'}
+            </h2>
+            <div className="flex items-center gap-2 text-white/40 text-sm">
+              <Sparkles className="w-4 h-4 text-orange-500" />
+              <span>{suggestions.length} films found in {selectedLanguage}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <AnimatePresence mode="popLayout">
+            {suggestions.map((s, i) => (
+              <motion.div
+                key={s.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: i * 0.1 }}
+                onClick={() => setSelectedVideo(s)}
+                className="group cursor-pointer"
+              >
+                <div className="relative aspect-video rounded-2xl overflow-hidden mb-4 border border-white/5 group-hover:border-orange-500/50 transition-all duration-500">
+                  <img src={s.thumbnail} alt={s.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center scale-90 group-hover:scale-100 transition-transform duration-500">
+                      <Play className="w-6 h-6 text-black fill-current" />
+                    </div>
+                  </div>
+                  <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-bold uppercase tracking-wider text-orange-500">
+                    {s.label}
+                  </div>
+                </div>
+                <h3 className="font-medium text-sm line-clamp-2 mb-1 group-hover:text-orange-500 transition-colors">{s.title}</h3>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-2">{s.channel}</p>
+                <p className="text-xs text-white/60 line-clamp-2 leading-relaxed italic">"{s.reason}"</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -428,46 +571,19 @@ export default function App() {
             transition={{ delay: 0.05 }}
             className="text-white/60 text-lg mb-8 max-w-2xl"
           >
-            Select your preferred language and explore curated festival winners or genres.
+            Select your preferred language and explore curated festival winners or use the PAL Genie.
           </motion.p>
-          
-          {/* Festival Grid */}
-          <section className="mb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-serif italic text-white/60">Festival Selections</h2>
-              <span className="text-[10px] text-white/30 uppercase tracking-widest">Award-winning content</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-              {FESTIVALS.map((festival, idx) => (
-                <motion.button
-                  key={festival}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: idx * 0.05 }}
-                  onClick={() => handleFestivalSelect(festival)}
-                  className={cn(
-                    "group relative p-3 rounded-xl border transition-all duration-300 text-center overflow-hidden",
-                    selectedFestival === festival 
-                      ? "bg-orange-500 border-orange-400 text-black" 
-                      : "bg-white/5 border-white/10 hover:border-orange-500/50 hover:bg-white/10"
-                  )}
-                >
-                  <span className="relative z-10 text-[10px] font-bold uppercase tracking-tight leading-tight block line-clamp-2">{festival}</span>
-                </motion.button>
-              ))}
-            </div>
-          </section>
-          
-          {/* Advanced Filters */}
+
+          {/* Global Search Criteria Bar */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="flex flex-wrap items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 mb-8"
+            className="flex flex-wrap items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 mb-12"
           >
             <div className="flex items-center gap-2 text-white/40 text-sm">
               <Filter className="w-4 h-4" />
-              <span>Filters:</span>
+              <span>Search Criteria:</span>
             </div>
             
             <div className="flex flex-col gap-1">
@@ -538,8 +654,38 @@ export default function App() {
               </div>
             </div>
           </motion.div>
+          
+          {/* Festival Section */}
+          <section className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-serif italic text-white/60">Festival Selections</h2>
+              <span className="text-[10px] text-white/30 uppercase tracking-widest">Award-winning content</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              {FESTIVALS.map((festival, idx) => (
+                <motion.button
+                  key={festival}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.05 }}
+                  onClick={() => handleFestivalSelect(festival)}
+                  className={cn(
+                    "group relative p-3 rounded-xl border transition-all duration-300 text-center overflow-hidden",
+                    selectedFestival === festival 
+                      ? "bg-orange-500 border-orange-400 text-black" 
+                      : "bg-white/5 border-white/10 hover:border-orange-500/50 hover:bg-white/10"
+                  )}
+                >
+                  <span className="relative z-10 text-[10px] font-bold uppercase tracking-tight leading-tight block line-clamp-2">{festival}</span>
+                </motion.button>
+              ))}
+            </div>
+          </section>
 
-          {/* Genie Feature */}
+          {/* Results for Festival */}
+          {selectedFestival && renderResults()}
+          
+          {/* Genie Section (Combined with Genre and Mood) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -550,12 +696,14 @@ export default function App() {
               The PAL Genie
             </div>
             <div className="p-8 rounded-3xl bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
-              <div className="flex flex-col md:flex-row gap-8">
+              <div className="flex flex-col gap-8">
                 <div className="flex-1">
                   <p className="text-white/60 text-sm mb-4">
-                    Describe your mood or a specific story you're looking for. The PAL Genie will find it.
+                    Describe your mood, pick a genre, or use a mood tag. The PAL Genie combines them all.
                   </p>
-                  <div className="flex gap-4 mb-6">
+                  
+                  {/* Genie Input */}
+                  <div className="flex flex-col md:flex-row gap-4 mb-8">
                     <div className="relative flex-1">
                       <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500" />
                       <input
@@ -563,166 +711,147 @@ export default function App() {
                         placeholder="e.g. A heartwarming story about a dog in a small village..."
                         value={moodInput}
                         onChange={(e) => setMoodInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && fetchSuggestions(null)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleGenieSearch()}
                         className="w-full bg-black/50 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-lg focus:outline-none focus:border-orange-500/50 transition-all"
                       />
                     </div>
                     <button
-                      onClick={() => fetchSuggestions(null)}
-                      disabled={loading || (!moodInput.trim() && !selectedMood)}
-                      className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      onClick={handleGenieSearch}
+                      disabled={loading || (!moodInput.trim() && !selectedMood && !selectedGenre)}
+                      className="px-8 py-4 rounded-2xl bg-orange-500 text-black font-bold hover:bg-orange-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[200px]"
                     >
                       {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
                       Ask PAL Genie
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Try these moods:</span>
-                    <div className="flex flex-wrap gap-2">
-                      {MOOD_TAGS.map(tag => (
-                        <button
-                          key={tag}
-                          onClick={() => {
-                            setSelectedMood(tag === selectedMood ? null : tag);
-                            if (tag !== selectedMood) fetchSuggestions(null);
-                          }}
-                          className={cn(
-                            "px-4 py-1.5 rounded-full text-xs transition-all border",
-                            selectedMood === tag 
-                              ? "bg-orange-500 border-orange-400 text-black font-bold" 
-                              : "bg-white/5 border-white/10 text-white/60 hover:border-orange-500/50"
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Mood Tags */}
+                    <div className="space-y-3">
+                      <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Try these moods:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {MOOD_TAGS.map(tag => (
+                          <button
+                            key={tag}
+                            onClick={() => {
+                              setSelectedMood(tag === selectedMood ? null : tag);
+                            }}
+                            className={cn(
+                              "px-4 py-1.5 rounded-full text-xs transition-all border",
+                              selectedMood === tag 
+                                ? "bg-orange-500 border-orange-400 text-black font-bold" 
+                                : "bg-white/5 border-white/10 text-white/60 hover:border-orange-500/50"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Genre Grid */}
+                    <div className="space-y-3">
+                      <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Pick a Genre:</span>
+                      <div className="grid grid-cols-4 gap-2">
+                        {GENRES.map((genre) => (
+                          <button
+                            key={genre}
+                            onClick={() => setSelectedGenre(genre === selectedGenre ? null : genre)}
+                            className={cn(
+                              "px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-tight border transition-all",
+                              selectedGenre === genre 
+                                ? "bg-orange-500 border-orange-400 text-black" 
+                                : "bg-white/5 border-white/10 text-white/60 hover:border-orange-500/50"
+                            )}
+                          >
+                            {genre}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <div className="w-full md:w-64 p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold block mb-3">PAL Genie Help</span>
-                  <ul className="space-y-3">
-                    {GENIE_HELP.slice(0, 3).map((help, i) => (
-                      <li key={i} className="text-[11px] text-white/50 leading-relaxed flex gap-2">
-                        <span className="text-orange-500">•</span>
-                        <span>{help}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
               </div>
             </div>
           </motion.div>
 
-          {/* Comparison Section */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mb-16 p-8 rounded-3xl bg-white/5 border border-white/10 group hover:bg-white/[0.07] transition-all duration-500"
-          >
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="flex-1">
-                <h3 className="text-2xl font-serif italic mb-2">Why PAL Theater?</h3>
-                <p className="text-white/40 text-sm mb-6">How we beat regular YouTube search for your movie night.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {WHY_PAL.map((item, i) => (
-                    <motion.div 
-                      key={i}
-                      whileHover={{ x: 10 }}
-                      className="space-y-1"
-                    >
-                      <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">{item.title}</h4>
-                      <p className="text-xs text-white/60 leading-relaxed">{item.desc}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-              <div className="w-48 h-48 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 group-hover:scale-110 transition-transform duration-700">
-                <Sparkles className="w-20 h-20 text-orange-500 opacity-20" />
-              </div>
-            </div>
-          </motion.div>
+          {/* Results for Genie/Genre */}
+          {!selectedFestival && renderResults()}
         </header>
 
-        {/* Genre Grid */}
-        <section className="mb-16">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-serif italic text-white/60">Or pick a quick genre</h2>
-            <span className="text-[10px] text-white/30 uppercase tracking-widest">Select one to refresh</span>
-          </div>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-            {GENRES.map((genre, idx) => (
-              <motion.button
-                key={genre}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 + idx * 0.05 }}
-                onClick={() => handleGenreSelect(genre)}
-                className={cn(
-                  "group relative p-3 rounded-xl border transition-all duration-300 text-center overflow-hidden",
-                  selectedGenre === genre 
-                    ? "bg-orange-500 border-orange-400 text-black" 
-                    : "bg-white/5 border-white/10 hover:border-orange-500/50 hover:bg-white/10"
-                )}
-              >
-                <span className="relative z-10 text-xs font-medium truncate block">{genre}</span>
-              </motion.button>
-            ))}
-          </div>
-        </section>
-
-        {/* Results Section */}
-        <AnimatePresence mode="wait">
-          {loading ? (
-            <motion.div 
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center py-20 gap-4"
-            >
-              <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
-              <p className="text-white/40 font-mono text-sm animate-pulse">CURATING YOUR EVENING...</p>
-            </motion.div>
-          ) : suggestions.length > 0 ? (
-            <motion.div 
-              key="results"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-12"
-            >
-              {/* Cinema Picks */}
-              <div>
-                <div className="flex items-center gap-3 mb-8">
-                  <Sparkles className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-2xl font-serif italic">Curated for You</h2>
-                  <div className="h-[1px] flex-1 bg-white/10" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {suggestions.map((video, idx) => (
-                    <VideoCard 
-                      key={video.id} 
-                      video={video} 
-                      index={idx} 
-                      onWatch={() => addToHistory(video)}
-                      onReview={() => { setActiveVideoForReview(video); fetchReviews(video.id); }}
-                    />
-                  ))}
-                </div>
+        {/* Trending Section */}
+        {!selectedFestival && !selectedGenre && !moodInput && !selectedMood && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-6 h-6 text-orange-500" />
+                <h2 className="text-2xl font-serif italic">Trending in {selectedLanguage}</h2>
               </div>
-            </motion.div>
-          ) : error ? (
-            <motion.div 
-              key="error"
-              className="p-8 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-center"
-            >
-              {error}
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {trendingVideos.map((video, idx) => (
+                <motion.div
+                  key={typeof video.id === 'string' ? video.id : video.id.videoId}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  onClick={() => setSelectedVideo({
+                    id: typeof video.id === 'string' ? video.id : video.id.videoId,
+                    title: video.snippet.title,
+                    thumbnail: video.snippet.thumbnails.high.url,
+                    channel: video.snippet.channelTitle,
+                    type: 'cinema',
+                    label: 'Trending',
+                    reason: 'Currently popular in your region.',
+                    summary: video.snippet.description,
+                    link: `https://www.youtube.com/watch?v=${typeof video.id === 'string' ? video.id : video.id.videoId}`,
+                    publishedAt: video.snippet.publishedAt
+                  })}
+                  className="group relative flex gap-6 p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/[0.08] transition-all duration-500 cursor-pointer overflow-hidden"
+                >
+                  <div className="w-48 aspect-video rounded-xl overflow-hidden flex-shrink-0 border border-white/5">
+                    <img src={video.snippet.thumbnails.high.url} alt={video.snippet.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <h3 className="font-medium text-lg leading-tight mb-2 line-clamp-2 group-hover:text-orange-500 transition-colors">{video.snippet.title}</h3>
+                    <p className="text-xs text-white/40 uppercase tracking-widest">{video.snippet.channelTitle}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Comparison Section (Moved to bottom) */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          className="mt-24 p-8 rounded-3xl bg-white/5 border border-white/10 group hover:bg-white/[0.07] transition-all duration-500"
+        >
+          <div className="flex flex-col md:flex-row items-center gap-8">
+            <div className="flex-1">
+              <h3 className="text-2xl font-serif italic mb-2">Why PAL Theater?</h3>
+              <p className="text-white/40 text-sm mb-6">How we beat regular YouTube search for your movie night.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {WHY_PAL.map((item, i) => (
+                  <motion.div 
+                    key={i}
+                    whileHover={{ x: 10 }}
+                    className="space-y-1"
+                  >
+                    <h4 className="text-orange-500 font-bold text-sm uppercase tracking-wider">{item.title}</h4>
+                    <p className="text-xs text-white/60 leading-relaxed">{item.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+            <div className="w-48 h-48 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 group-hover:scale-110 transition-transform duration-700">
+              <Sparkles className="w-20 h-20 text-orange-500 opacity-20" />
+            </div>
+          </div>
+        </motion.div>
       </main>
 
       {/* Auth Modal */}
@@ -953,6 +1082,41 @@ export default function App() {
           Powered by Gemini & YouTube Data API
         </p>
       </footer>
+
+      {/* Video Player Modal */}
+      <AnimatePresence>
+        {selectedVideo && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedVideo(null)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-xl"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 40 }}
+              className="relative w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-white/10"
+            >
+              <button 
+                onClick={() => setSelectedVideo(null)}
+                className="absolute top-6 right-6 z-10 p-3 rounded-full bg-black/50 text-white/70 hover:text-white hover:bg-black transition-all backdrop-blur-md"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <iframe
+                src={`https://www.youtube.com/embed/${selectedVideo.id}?autoplay=1`}
+                title={selectedVideo.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
