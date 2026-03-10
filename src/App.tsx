@@ -770,6 +770,24 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Genie Tips / Inspiration */}
+                  <div className="mt-8 pt-8 border-t border-white/5">
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest font-bold block mb-4">Need inspiration? Try asking for:</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {GENIE_HELP.map((help, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setMoodInput(help)}
+                          className="text-left p-3 rounded-xl bg-white/5 border border-white/10 hover:border-orange-500/50 hover:bg-white/10 transition-all group"
+                        >
+                          <p className="text-[11px] text-white/50 group-hover:text-white/80 leading-relaxed italic">
+                            "{help}"
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
